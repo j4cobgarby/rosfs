@@ -2,8 +2,6 @@ cmake_minimum_required(VERSION 3.8)
 project(rosfs)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
-message(CMAKE_MODULE_PATH="${CMAKE_MODULE_PATH}")
-message(CMAKE_CURRENT_LIST_DIR="${CMAKE_CURRENT_LIST_DIR}")
 
 #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_FILE_OFFSET_BITS=64")
 add_compile_definitions(_FILE_OFFSET_BITS=64)
@@ -30,7 +28,7 @@ find_package(rclc_parameter REQUIRED)
 
 include_directories(include)
 include_directories(${FUSE_INCLUDE_DIR})
-link_libraries(${FUSE_LIBRARIES})
+link_libraries(pubsubfs ${FUSE_LIBRARIES})
 
 add_executable(main src/main.c)
 ament_target_dependencies(main rcl rclc std_msgs)
