@@ -33,8 +33,12 @@ link_libraries(pubsubfs ${FUSE_LIBRARIES})
 add_executable(main src/main.c)
 ament_target_dependencies(main rcl rclc std_msgs)
 
+add_executable(issue src/issue.c)
+ament_target_dependencies(issue rcl rclc std_msgs)
+
 install(TARGETS
   main
+  issue
   DESTINATION lib/${PROJECT_NAME}
 )
 

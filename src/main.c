@@ -1,13 +1,16 @@
 #include <pubsubfs/hashmap.h>
+#include <rcl/allocator.h>
 #include <rcl/macros.h>
 #include <rcl/publisher.h>
 #include <rcl/subscription.h>
 #include <rcl/validate_topic_name.h>
 #include <rcl/types.h>
 
+#include <rclc/executor_handle.h>
 #include <rcutils/allocator.h>
 #include <rosidl_runtime_c/message_type_support_struct.h>
 
+#include <std_msgs/msg/detail/int32__functions.h>
 #include <std_msgs/msg/detail/int32__struct.h>
 #include <std_msgs/msg/detail/string__struct.h>
 #include <std_msgs/msg/string.h>
@@ -32,24 +35,13 @@
 
 #define MAX_TOPICS 100 // Max topics to subscribe and publish to. Max topics in total is this * 2
 
-// struct rosfs_pubsub_context {
-//     union {
-//         struct {
-//             rcl_publisher_t *publisher;
-//         } as_pub;
-//         struct {
-//             rcl_subscription_t *subscription;
-//             void **message_queue;
-//         } as_sub;
-//     };
-// };
-
 union rosfs_pubsub_context {
     struct {
         rcl_publisher_t *publisher;
     } as_pub;
     struct {
         rcl_subscription_t *subscription;
+        void *sub_msg;
         void **message_queue;
     } as_sub;
 };
@@ -59,13 +51,14 @@ rclc_support_t support;
 rcl_node_t node;
 rclc_executor_t executor;
 
+pthread_mutex_t mut_executor = PTHREAD_MUTEX_INITIALIZER;
+
 void subscription_cbk(const void *msg, void *ctx) {
     rcl_subscription_t *sub = (rcl_subscription_t*)ctx;
     RCL_UNUSED(sub);
-    const char *msg_s = (const char *)msg;
-    
+    const std_msgs__msg__Int32 *msg_i = msg;
 
-    printf("Subscription callback from %s\n", msg_s);
+    printf("Subscription callback: %d\n", msg_i->data);
 }
 
 int fs_init(void) {
@@ -85,12 +78,17 @@ int fs_make_subscriber(const char *topic, int flags, void **typedata) {
         return -1;
     }
 
-    printf("Creating a subscriber to '%s'.", topic);
+    printf("Creating a subscriber to '%s'.\n", topic);
 
     union rosfs_pubsub_context **context = (union rosfs_pubsub_context**)typedata;
     *context = malloc(sizeof(union rosfs_pubsub_context));
     (*context)->as_sub.subscription = malloc(sizeof(rcl_subscription_t));
+    *(*context)->as_sub.subscription = rcl_get_zero_initialized_subscription();
+
+    (*context)->as_sub.sub_msg = malloc(sizeof(std_msgs__msg__Int32));
+    std_msgs__msg__Int32__init((*context)->as_sub.sub_msg);
     
+    pthread_mutex_lock(&mut_executor);
     RCL_VERIFY(rclc_subscription_init_default(
         (*context)->as_sub.subscription,
         &node, 
@@ -99,9 +97,10 @@ int fs_make_subscriber(const char *topic, int flags, void **typedata) {
         "Error while initialising subscriber.\n");
 
     RCL_VERIFY(rclc_executor_add_subscription_with_context(&executor,
-        (*context)->as_sub.subscription, malloc(sizeof(std_msgs__msg__Int32)), 
+        (*context)->as_sub.subscription, (*context)->as_sub.sub_msg, 
         &subscription_cbk, (*context)->as_sub.subscription, ON_NEW_DATA),
         "Error while adding subscription to executor.\n");
+    pthread_mutex_unlock(&mut_executor);
 
     printf("Subscriber created successfully.\n");
 
@@ -120,17 +119,19 @@ int fs_make_publisher(const char *topic, int flags, void **typedata) {
         return -1;
     }
 
-    printf("Creating a publisher to '%s'.", topic);
+    printf("Creating a publisher to '%s'.\n", topic);
     union rosfs_pubsub_context **context = (union rosfs_pubsub_context**)typedata;
     *context = malloc(sizeof(union rosfs_pubsub_context));
     (*context)->as_pub.publisher = malloc(sizeof(rcl_publisher_t));
 
+    pthread_mutex_lock(&mut_executor);
     RCL_VERIFY(rclc_publisher_init_default(
         (*context)->as_pub.publisher,
         &node,
         ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
         topic), 
         "Error while initialising publisher.\n");
+    pthread_mutex_unlock(&mut_executor);
 
     printf("Publisher created successfully.\n");
 
@@ -186,8 +187,14 @@ void *startfs(void *args_generic) {
     start_interface(args->type, args->argc, args->argv);
 }
 
+void _dummy_cbk(const void *msg) {
+    printf("Dummy callback called(!?)\n");
+}
+
 int main(int argc, const char **argv) {
-    allocator = rcutils_get_default_allocator();
+    union rosfs_pubsub_context *__ctx;
+
+    allocator = rcl_get_default_allocator();
 
     struct pubsubfs_type fs_type = {
         .init = fs_init,
@@ -215,7 +222,24 @@ int main(int argc, const char **argv) {
     RCL_VERIFY(rclc_node_init_default(&node, "pubsubfs", "", &support), "Error while intialising node.\n");
 
     executor = rclc_executor_get_zero_initialized_executor();
-    rclc_executor_init(&executor, &support.context, MAX_TOPICS * 2, &allocator);
+    RCL_VERIFY(rclc_executor_init(&executor, &support.context, MAX_TOPICS, &allocator), "Failed to initialise executor\n");
+
+    printf("Running a bit.\n");
+    for (int i = 0; i < 1000; i++) {
+        rclc_executor_spin_some(&executor, 1000);
+    }
+    printf("Making initial subs.\n");
+
+    fs_make_subscriber("testsub", 0, (void**)&__ctx);
+
+    // Create dummy subscriber
+    rcl_subscription_t _dummy_sub;
+    const char *_dummy_topic = "__rosfs_dummy__";
+    const rosidl_message_type_support_t *_dummy_support = ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32);
+    std_msgs__msg__Int32 _dummy_msg;
+    std_msgs__msg__Int32__init(&_dummy_msg);
+    RCL_VERIFY(rclc_subscription_init_default(&_dummy_sub, &node, _dummy_support, _dummy_topic), "Failed to initialise dummy subscription.\n");
+    RCL_VERIFY(rclc_executor_add_subscription(&executor, &_dummy_sub, &_dummy_msg, _dummy_cbk, ON_NEW_DATA), "Failed to setup dummy callback.\n");
 
     printf("Ready to start FS thread.\n");
 
@@ -224,7 +248,15 @@ int main(int argc, const char **argv) {
         return -1;
     }
 
-    rclc_executor_spin(&executor);
+    while (1) {
+        pthread_mutex_lock(&mut_executor);
+        if (rclc_executor_spin_some(&executor, 1000) != RCL_RET_OK) {
+            printf("RCLC executor failed.\n");
+            pthread_mutex_unlock(&mut_executor);
+            break;
+        }
+        pthread_mutex_unlock(&mut_executor);
+    }
 
     printf("Executor stopped spinning.\n");
 
