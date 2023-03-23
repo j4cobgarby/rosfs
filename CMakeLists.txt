@@ -30,15 +30,11 @@ include_directories(include)
 include_directories(${FUSE_INCLUDE_DIR})
 link_libraries(pubsubfs ${FUSE_LIBRARIES})
 
-add_executable(main src/main.c)
+add_executable(main src/main.c src/circ_buff.c)
 ament_target_dependencies(main rcl rclc std_msgs)
-
-add_executable(issue src/issue.c)
-ament_target_dependencies(issue rcl rclc std_msgs)
 
 install(TARGETS
   main
-  issue
   DESTINATION lib/${PROJECT_NAME}
 )
 

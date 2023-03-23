@@ -27,13 +27,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <string.h>
 
-#define RCL_VERIFY(expr, msg)\
-    {rcl_ret_t __ret = expr;\
-    if (__ret != RCL_RET_OK) {\
-    fprintf(stderr, "[ERROR: %d]\t" msg, __ret);return -1;} else {}}
-
-#define MAX_TOPICS 100 // Max topics to subscribe and publish to. Max topics in total is this * 2
+#include "circ_buff.h"
+#include "rosfs.h"
 
 union rosfs_pubsub_context {
     struct {
@@ -41,8 +38,8 @@ union rosfs_pubsub_context {
     } as_pub;
     struct {
         rcl_subscription_t *subscription;
-        void *sub_msg;
-        void **message_queue;
+        void *sub_msg; // Temporary message used to store subscription messages in before they're copied to the queue
+        struct circ_buff msg_queue; // A circular buffer queue of messages
     } as_sub;
 };
 
@@ -53,9 +50,13 @@ rclc_executor_t executor;
 
 pthread_mutex_t mut_executor = PTHREAD_MUTEX_INITIALIZER;
 
-void subscription_cbk(const void *msg, void *ctx) {
-    rcl_subscription_t *sub = (rcl_subscription_t*)ctx;
-    RCL_UNUSED(sub);
+void subscription_cbk(const void *msg, void *ctx_void) {
+    union rosfs_pubsub_context *ctx = ctx_void;
+
+    void *msg_cpy = malloc(sizeof(std_msgs__msg__Int32));
+    memcpy(msg_cpy, msg, sizeof(std_msgs__msg__Int32));
+    circ_buff_put(&ctx->as_sub.msg_queue, msg_cpy);
+
     const std_msgs__msg__Int32 *msg_i = msg;
 
     printf("Subscription callback: %d\n", msg_i->data);
@@ -87,6 +88,8 @@ int fs_make_subscriber(const char *topic, int flags, void **typedata) {
 
     (*context)->as_sub.sub_msg = malloc(sizeof(std_msgs__msg__Int32));
     std_msgs__msg__Int32__init((*context)->as_sub.sub_msg);
+
+    circ_buff_init(&(*context)->as_sub.msg_queue, 64);
     
     pthread_mutex_lock(&mut_executor);
     RCL_VERIFY(rclc_subscription_init_default(
@@ -98,7 +101,7 @@ int fs_make_subscriber(const char *topic, int flags, void **typedata) {
 
     RCL_VERIFY(rclc_executor_add_subscription_with_context(&executor,
         (*context)->as_sub.subscription, (*context)->as_sub.sub_msg, 
-        &subscription_cbk, (*context)->as_sub.subscription, ON_NEW_DATA),
+        &subscription_cbk, *context, ON_NEW_DATA),
         "Error while adding subscription to executor.\n");
     pthread_mutex_unlock(&mut_executor);
 
@@ -155,7 +158,13 @@ int fs_publish(const char *topic, const char *buff, size_t size, void **typedata
 }
 
 int fs_pop(const char *topic, char *buff, void **typedata) {
-    printf("Popping message from %s\n", topic);
+    union rosfs_pubsub_context **context = (union rosfs_pubsub_context**)typedata;
+    void *msg_void = circ_buff_get(&(*context)->as_sub.msg_queue);
+    std_msgs__msg__Int32 *msg = msg_void;
+    
+    sprintf(buff, "data\t%d", msg->data);
+
+    printf("Popping message (%d) from %s\n", msg->data, topic);
 
     return 0;
 }
