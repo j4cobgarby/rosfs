@@ -41,3 +41,5 @@ install(TARGETS
 )
 
 ament_package()
+
+# colcon build --cmake-args '-DCMAKE_BUILD_TYPE=Debug' --cmake-clean-first
