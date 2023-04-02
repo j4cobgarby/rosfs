@@ -22,16 +22,18 @@ find_package(FUSE REQUIRED)
 find_package(ament_cmake_ros REQUIRED)
 find_package(rcl REQUIRED)
 find_package(rclc REQUIRED)
-find_package(std_msgs REQUIRED)
 find_package(example_interfaces REQUIRED)
 find_package(rclc_parameter REQUIRED)
+
+find_package(std_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 
 include_directories(include)
 include_directories(${FUSE_INCLUDE_DIR})
 link_libraries(pubsubfs ${FUSE_LIBRARIES})
 
 add_executable(main src/main.c src/circ_buff.c)
-ament_target_dependencies(main rcl rclc std_msgs)
+ament_target_dependencies(main rcl rclc std_msgs geometry_msgs)
 
 install(TARGETS
   main
