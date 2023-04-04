@@ -3,6 +3,7 @@
 #include <geometry_msgs/msg/detail/vector3__struct.h>
 #include <rosidl_runtime_c/message_type_support_struct.h>
 #include <std_msgs/msg/detail/float32__struct.h>
+#include <std_msgs/msg/detail/int32__struct.h>
 #include <stdio.h>
 
 #include <pubsubfs/hashmap.h>
@@ -56,7 +57,7 @@ void rosfs_type_system_init(hashmap *typemap) {
 #define SETUP_TYPE(PKG, FOLDER, TYPE) \
 type_array[types_count].size = sizeof(PKG ## __ ## FOLDER ## __ ## TYPE);\
 type_array[types_count].type_support = ROSIDL_GET_MSG_TYPE_SUPPORT(PKG, FOLDER, TYPE);\
-type_array[types_count].msg_init = PKG ## __ ## FOLDER ## __ ## TYPE ## __ ## init;\
+type_array[types_count].msg_init = (bool (*)(void*)) PKG ## __ ## FOLDER ## __ ## TYPE ## __ ## init;\
 type_array[types_count].msg_to_string = _ ## TYPE ## _to_str;\
 type_array[types_count].string_to_msg = _str_to_ ## TYPE;\
 hashmap_add(typemap, serialise_string(#PKG "/" #FOLDER "/" #TYPE), type_array + types_count++);

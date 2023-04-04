@@ -32,7 +32,7 @@ include_directories(include)
 include_directories(${FUSE_INCLUDE_DIR})
 link_libraries(pubsubfs ${FUSE_LIBRARIES})
 
-add_executable(main src/main.c src/circ_buff.c)
+add_executable(main src/main.c src/circ_buff.c src/type.c)
 ament_target_dependencies(main rcl rclc std_msgs geometry_msgs)
 
 install(TARGETS

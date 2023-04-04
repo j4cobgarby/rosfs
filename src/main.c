@@ -42,8 +42,7 @@ void subscription_cbk(const void *msg, void *ctx_void) {
     void *msg_cpy = malloc(ctx->as_sub.type->size);
     memcpy(msg_cpy, msg, ctx->as_sub.type->size);
     circ_buff_put(&ctx->as_sub.msg_queue, msg_cpy);
-
-
+    
     printf("Subscription callback\n");
 }
 
@@ -52,7 +51,7 @@ int fs_init(void) {
     return 0;
 }
 
-int fs_make_subscriber(const char *topic_and_type, int flags, void **typedata) {
+int fs_make_subscriber(const char *topic_and_type, int flags, void **typedata, off_t *cutoff) {
     RCLC_UNUSED(flags);
     
     int result;
@@ -72,9 +71,14 @@ int fs_make_subscriber(const char *topic_and_type, int flags, void **typedata) {
 
     type_name = strchr(topic_and_type_copy, ':');
     if (!type_name) {
+        //TODO: Consider a default type here, maybe default to Int32? String?
         printf("No type specified for topic %s\n", topic_and_type);
         return -1;
     }
+
+
+    // Inform libpubsubfs that the actual topic name ends at the ':' char
+    *cutoff = type_name - topic_and_type_copy;
 
     // Split topic_and_type_copy into two strings. topic_and_type_copy now points to
     // a whole string of just the topic name, and type_name points to everything after
@@ -128,7 +132,7 @@ int fs_make_subscriber(const char *topic_and_type, int flags, void **typedata) {
     return 0;
 }
 
-int fs_make_publisher(const char *topic_and_type, int flags, void **typedata) {
+int fs_make_publisher(const char *topic_and_type, int flags, void **typedata, off_t *cutoff) {
     RCLC_UNUSED(flags);
 
     int result;
@@ -146,6 +150,8 @@ int fs_make_publisher(const char *topic_and_type, int flags, void **typedata) {
         printf("No type specified for topic %s\n", topic_and_type);
         return -1;
     }
+
+    *cutoff = type_name - topic_and_type_copy;
 
     // Split topic_and_type_copy into two strings. topic_and_type_copy now points to
     // a whole string of just the topic name, and type_name points to everything after
@@ -200,7 +206,7 @@ int fs_publish(const char *topic, const char *buff, size_t size, void **typedata
     msg = malloc(type->size);
     type->string_to_msg(msg, buff);
     
-    RCL_VERIFY(rcl_publish(pub, &msg, NULL), "Error while publishing a message.\n");
+    RCL_VERIFY(rcl_publish(pub, msg, NULL), "Error while publishing a message.\n");
 
     free(msg); // No longer needed after publishing
 
