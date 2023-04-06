@@ -1,6 +1,8 @@
 #ifndef __INCLUDE_TYPE_H__
 #define __INCLUDE_TYPE_H__
 
+#define _GNU_SOURCE
+
 #include <rosidl_runtime_c/message_type_support_struct.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -16,7 +18,7 @@ struct rosfs_msg_type {
     bool (*msg_init)(void *); // Function to initialise a message of this type. Something like std_msgs__msg__Int32__init
     const rosidl_message_type_support_t *type_support;
     int (*string_to_msg)(void *, const char *);
-    int (*msg_to_string)(void *, char *);
+    int (*msg_to_string)(void *, char *, size_t size);
 };
 
 void rosfs_type_system_init(hashmap *typemap);

@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <string.h>
+#include <signal.h>
 
 #include "circ_buff.h"
 #include "rosfs.h"
@@ -36,6 +37,8 @@ pthread_mutex_t mut_executor = PTHREAD_MUTEX_INITIALIZER;
 
 hashmap typemap;
 
+static  int running = 1;
+
 void subscription_cbk(const void *msg, void *ctx_void) {
     union rosfs_pubsub_context *ctx = ctx_void;
 
@@ -43,7 +46,7 @@ void subscription_cbk(const void *msg, void *ctx_void) {
     memcpy(msg_cpy, msg, ctx->as_sub.type->size);
     circ_buff_put(&ctx->as_sub.msg_queue, msg_cpy);
     
-    printf("Subscription callback\n");
+    printf("Subscription callback. Added message @ %p\n", msg_cpy);
 }
 
 int fs_init(void) {
@@ -204,7 +207,10 @@ int fs_publish(const char *topic, const char *buff, size_t size, void **typedata
     struct rosfs_msg_type *type = (*context)->as_pub.type;
 
     msg = malloc(type->size);
-    type->string_to_msg(msg, buff);
+    if (type->string_to_msg(msg, buff) != 0) {
+        printf("Failed to convert string to message type.\n");
+        return -1;
+    }
     
     RCL_VERIFY(rcl_publish(pub, msg, NULL), "Error while publishing a message.\n");
 
@@ -213,16 +219,17 @@ int fs_publish(const char *topic, const char *buff, size_t size, void **typedata
     return 0;
 }
 
-int fs_pop(const char *topic, char *buff, void **typedata) {
+int fs_pop(const char *topic, char *buff, size_t size, void **typedata) {
     union rosfs_pubsub_context **context = (union rosfs_pubsub_context**)typedata;
-    struct rosfs_msg_type *type = (*context)->as_pub.type;
+    struct rosfs_msg_type *type = (*context)->as_sub.type;
     
     void *msg_void = circ_buff_get(&(*context)->as_sub.msg_queue);
 
+    printf("Got message from circular buffer @ %p\n", msg_void);
+
     if (!msg_void) return -1;
     
-    //TODO: Allocate space for string in buff
-    type->msg_to_string(msg_void, buff);
+    type->msg_to_string(msg_void, buff, size);
 
     printf("Popping message (%s) from %s\n", buff, topic);
 
@@ -254,10 +261,17 @@ struct fs_thread_info {
 void *startfs(void *args_generic) {
     struct fs_thread_info *args = (struct fs_thread_info *)args_generic;
     start_interface(args->type, args->argc, args->argv);
+
+    return 0;
+}
+
+void endfs(int _) {
+    RCL_UNUSED(_);
+    printf("Ending fs.\n");
+    running = 0;
 }
 
 int main(int argc, const char **argv) {
-    union rosfs_pubsub_context *__ctx;
     pthread_t fs_thread;
 
     allocator = rcl_get_default_allocator();
@@ -293,12 +307,14 @@ int main(int argc, const char **argv) {
     
     printf("Ready to start FS thread.\n");
 
+    signal(SIGINT, endfs);
+
     if (pthread_create(&fs_thread, NULL, startfs, &fsargs) != 0) {
         printf("Error creating FS thread.\n");
         return -1;
     }
 
-    while (1) {
+    while (running) {
         pthread_mutex_lock(&mut_executor);
         if (rclc_executor_spin_some(&executor, 1000) != RCL_RET_OK) {
             printf("RCLC executor failed.\n");
@@ -308,7 +324,10 @@ int main(int argc, const char **argv) {
         pthread_mutex_unlock(&mut_executor);
     }
 
+    pthread_kill(fs_thread, SIGINT);
     printf("Executor stopped spinning.\n");
+    pthread_join(fs_thread, NULL);
+
 
     // for (size_t i = 0; i < publishers.size; i++) {
     //     struct hm_entry *ent = &publishers.table[i];

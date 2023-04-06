@@ -4,6 +4,7 @@
 #include <rosidl_runtime_c/message_type_support_struct.h>
 #include <std_msgs/msg/detail/float32__struct.h>
 #include <std_msgs/msg/detail/int32__struct.h>
+
 #include <stdio.h>
 
 #include <pubsubfs/hashmap.h>
@@ -25,9 +26,9 @@ static int _str_to_Int32(void *i_void, const char *str) {
     return 1 == sscanf(str, "%d", &i->data) ? 0 : -1;
 }
 
-static int _Int32_to_str(void *i_void, char *str) {
+static int _Int32_to_str(void *i_void, char *str, size_t size) {
     std_msgs__msg__Int32 *i = i_void;
-    return 1 == sprintf(str, "%d", i->data) ? 0 : -1;
+    return 1 == snprintf(str, size, "%d", i->data) ? 0 : -1;
 }
 
 static int _str_to_Float32(void *f_void, const char *str) {
@@ -35,9 +36,9 @@ static int _str_to_Float32(void *f_void, const char *str) {
     return 1 == sscanf(str, "%f", &f->data) ? 0 : -1;
 }
 
-static int _Float32_to_str(void *f_void, char *str) {
+static int _Float32_to_str(void *f_void, char *str, size_t size) {
     std_msgs__msg__Float32 *f = f_void;
-    return 1 == sprintf(str, "%f", f->data) ? 0 : -1;
+    return 1 == snprintf(str, size, "%f", f->data) ? 0 : -1;
 }
 
 static int _str_to_Vector3(void *v_void, const char *str) {
@@ -45,9 +46,9 @@ static int _str_to_Vector3(void *v_void, const char *str) {
     return 3 == sscanf(str, "%lf\n%lf\n%lf", &v->x, &v->y, &v->z) ? 0 : 1;
 }
 
-static int _Vector3_to_str(void *v_void, char *str) {
+static int _Vector3_to_str(void *v_void, char *str, size_t size) {
     geometry_msgs__msg__Vector3 *v = v_void;
-    return 3 == sprintf(str, "%lf\n%lf\n%lf\n", v->x, v->y, v->z) ? 0 : 1;
+    return 3 == snprintf(str, size, "%lf\n%lf\n%lf\n", v->x, v->y, v->z) ? 0 : 1;
 }
 
 static struct rosfs_msg_type type_array[MAX_TYPES];
@@ -60,7 +61,8 @@ type_array[types_count].type_support = ROSIDL_GET_MSG_TYPE_SUPPORT(PKG, FOLDER, 
 type_array[types_count].msg_init = (bool (*)(void*)) PKG ## __ ## FOLDER ## __ ## TYPE ## __ ## init;\
 type_array[types_count].msg_to_string = _ ## TYPE ## _to_str;\
 type_array[types_count].string_to_msg = _str_to_ ## TYPE;\
-hashmap_add(typemap, serialise_string(#PKG "/" #FOLDER "/" #TYPE), type_array + types_count++);
+printf("Adding type @ %p to hashmap\n", (void*)(type_array + types_count));\
+hashmap_add(typemap, serialise_string(#PKG "/" #FOLDER "/" #TYPE), &(type_array[types_count++]));
 
     *typemap = hashmap_new(MAX_TYPES, hsh);
 

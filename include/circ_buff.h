@@ -1,6 +1,8 @@
 #ifndef __INCLUDE_CIRC_BUFF_H__
 #define __INCLUDE_CIRC_BUFF_H__
 
+#define _GNU_SOURCE
+
 struct circ_buff {
     void **arr;
     int end;

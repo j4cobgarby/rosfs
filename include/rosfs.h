@@ -1,6 +1,8 @@
 #ifndef __INCLUDE_ROSFS_H__
 #define __INCLUDE_ROSFS_H__
 
+#define _GNU_SOURCE
+
 #include <rcl/publisher.h>
 #include <rcl/subscription.h>
 
