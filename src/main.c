@@ -324,28 +324,37 @@ int main(int argc, const char **argv) {
         pthread_mutex_unlock(&mut_executor);
     }
 
+    printf("Cleaning up...\n");
+
+    for (size_t i = 0; i < publishers.size; i++) {
+        struct hm_entry *ent = &publishers.table[i];
+
+        if (HM_ENTRY_PRESENT(ent)) {
+            struct topic_info *top = ent->v;
+            union rosfs_pubsub_context *ctx = *top->typedata;
+            RCL_VERIFY(rcl_publisher_fini(ctx->as_pub.publisher, &node), "Failed to finalise publisher.\n");
+        }
+    }
+
+    printf("Finalised all publishers.\n");
+
+    for (size_t i = 0; i < subscribers.size; i++) {
+        struct hm_entry *ent = &subscribers.table[i];
+
+        if (HM_ENTRY_PRESENT(ent)) {
+            struct topic_info *top = ent->v;
+            
+            RCL_VERIFY(rcl_subscription_fini(*top->typedata, &node), "Failed to finalise publisher.\n");
+        }
+    }
+
+    printf("Finalised all subscriptions.\n");
+
+    stop_interface();
+
     pthread_kill(fs_thread, SIGINT);
     printf("Executor stopped spinning.\n");
     pthread_join(fs_thread, NULL);
-
-
-    // for (size_t i = 0; i < publishers.size; i++) {
-    //     struct hm_entry *ent = &publishers.table[i];
-    //     struct topic_info *top = ent->v;
-    //     if (HM_ENTRY_PRESENT(ent)) {
-    //         RCL_VERIFY(rcl_publisher_fini(top->typedata, &node), "Failed to finish publisher.\n");
-    //         printf("Successfully finished publisher.\n");
-    //     }
-    // }
-
-    // for (size_t i = 0; i < subscribers.size; i++) {
-    //     struct hm_entry *ent = &subscribers.table[i];
-    //     struct topic_info *top = ent->v;
-    //     if (HM_ENTRY_PRESENT(ent)) {
-    //         RCL_VERIFY(rcl_subscription_fini(top->typedata, &node), "Failed to finish subscription.\n");
-    //         printf("Successfully finished subscription.\n");
-    //     }
-    // }
 
     return 0;
 }
