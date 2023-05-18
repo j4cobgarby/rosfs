@@ -222,8 +222,10 @@ int fs_publish(const char *topic, const char *buff, size_t size, void **typedata
 int fs_pop(const char *topic, char *buff, size_t size, void **typedata) {
     union rosfs_pubsub_context **context = (union rosfs_pubsub_context**)typedata;
     struct rosfs_msg_type *type = (*context)->as_sub.type;
-    
-    void *msg_void = circ_buff_get(&(*context)->as_sub.msg_queue);
+    void *msg_void;
+
+    // Busy wait for available message
+    while ((msg_void = circ_buff_get(&(*context)->as_sub.msg_queue)) == NULL);
 
     printf("Got message from circular buffer @ %p\n", msg_void);
 
@@ -237,6 +239,22 @@ int fs_pop(const char *topic, char *buff, size_t size, void **typedata) {
 }
 
 int fs_subscription_status(const char *topic, struct substat *buff, void **typedata) {
+    union rosfs_pubsub_context **context = (union rosfs_pubsub_context**)typedata;
+    char tmp_s[4096];
+
+    void *msg_void;
+
+    if ((msg_void = circ_buff_get(&(*context)->as_sub.msg_queue)) == NULL) {
+        buff->next_msg_length = 0;
+        buff->queue_size = 0;
+    } else {
+        (*context)->as_sub.type->msg_to_string(msg_void, tmp_s, 4096);
+        buff->next_msg_length = strlen(tmp_s);
+        buff->queue_size = 1;
+    }
+    
+    circ_buff_put(&(*context)->as_sub.msg_queue, msg_void);
+
     return 0;
 }
 
